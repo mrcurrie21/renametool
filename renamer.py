@@ -2,6 +2,7 @@
 
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import questionary
@@ -336,6 +337,22 @@ def show_preview(results: list[dict]) -> None:
     console.print(f"[yellow]{skip_count} skipped.[/yellow]")
 
 
+def write_log(folder: Path, results: list[dict]) -> None:
+    """Append a timestamped rename record to .renametool.log in folder.
+
+    All results (OK, NO CHANGE, CONFLICT, INVALID) are recorded so the log
+    is a complete audit trail of every rename attempt in the session.
+    """
+    log_path = folder / ".renametool.log"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(f"=== {ts} ===\n")
+        for r in results:
+            f.write(f"{r['original'].name} -> {r['new_name']} [{r['status']}]\n")
+        f.write("\n")
+    console.print(f"[dim]Log written to {log_path}[/dim]")
+
+
 def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
     """Confirm and rename valid files. Skip CONFLICT/INVALID/NO CHANGE."""
     ok_items = [r for r in results if r["status"] == "OK"]
@@ -363,6 +380,9 @@ def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
     console.print(f"\n[green]{success} file(s) renamed successfully.[/green]")
     if errors:
         console.print(f"[red]{errors} file(s) failed.[/red]")
+
+    if success > 0:
+        write_log(ok_items[0]["original"].parent, results)
 
 
 def main():  # pragma: no cover
