@@ -1,0 +1,22 @@
+# renametool.toml — user defaults for the Batch File Rename Tool
+#
+# Copy this file to renametool.toml (same directory as renamer.py)
+# and edit the values below. All keys are optional.
+
+# default_folder: pre-fill the folder prompt with this path.
+# If omitted, the current working directory is used as usual.
+#
+# default_folder = "/Users/alice/Movies"
+# default_folder = "C:/Users/alice/Movies"
+
+# default_extension_filter: automatically pre-select this extension
+# in the "Filter by extension?" prompt. Must include the leading dot.
+# If omitted, "No filter (all files)" is pre-selected.
+#
+# default_extension_filter = ".mkv"
+
+# excluded_files: filenames to exclude from the file listing in addition
+# to the built-in hidden files (desktop.ini, thumbs.db, dot-files).
+# Matching is case-insensitive.
+#
+# excluded_files = ["sample.mkv", "readme.txt"]
