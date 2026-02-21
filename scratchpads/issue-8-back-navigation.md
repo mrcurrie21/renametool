@@ -1,6 +1,10 @@
 # Issue #8 — Add back/undo navigation between wizard steps
 https://github.com/mrcurrie21/renametool/issues/8
 
+## Resolution
+- **PR:** #14 — merged 2026-02-21
+- **Summary:** Refactored `main()` into a 5-step wizard loop (`step_folder`, `step_ext_filter`, `step_select_files`, `step_operations`, `step_preview`) with `"<< Go back"` navigation, shared state dict with downstream clearing, and pre-filled selections on re-entry. Fixed operator precedence bug in ext_filter default during review.
+
 ## Decided approach: Restart from step N
 Store all selections in a session state dict. When user goes back, decrement the step index and
 re-enter that step, pre-filling prompts with stored values from state.
