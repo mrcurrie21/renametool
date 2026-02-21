@@ -1,6 +1,10 @@
 # Issue #3 — Add undo support
 https://github.com/mrcurrie21/renametool/issues/3
 
+## Resolution
+- **PR:** #13 — merged 2026-02-21
+- **Summary:** Added `save_undo_map()`, `load_undo_map()`, and `apply_undo()`. After folder selection, offers "Undo last rename?" if `.renametool_undo.json` exists. Undo file saved after each successful batch, deleted after successful undo. 18 new tests.
+
 ## Decisions
 - Independent from Issue #2 (separate file, no shared code)
 - Undo file: `.renametool_undo.json` in the target folder

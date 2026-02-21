@@ -1,6 +1,10 @@
 # Issue #9 — Establish testing framework and CI pipeline
 https://github.com/mrcurrie21/renametool/issues/9
 
+## Resolution
+- **PR:** #10 — merged 2026-02-21
+- **Summary:** Added pytest + pytest-cov + ruff tooling, 68-test suite at 100% coverage, GitHub Actions CI pipeline on push/PR to master. TUI functions marked `# pragma: no cover`.
+
 ## Decisions
 - Framework: pytest + pytest-cov
 - CI: GitHub Actions (push + PR on master)
