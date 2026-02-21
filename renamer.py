@@ -19,6 +19,8 @@ HIDDEN_NAMES = {"desktop.ini", "thumbs.db"}
 INVALID_CHARS = set('<>:"/\\|?*')
 MAX_NAME_LEN = 255
 UNDO_FILE = ".renametool_undo.json"
+BACK = "BACK"
+GO_BACK = "<< Go back"
 
 
 def load_config() -> dict:
@@ -75,95 +77,6 @@ def list_files(
     return files
 
 
-def ask_extension_filter(
-    files: list[Path],
-    default_ext: str | None = None,
-) -> str | None:  # pragma: no cover
-    """Show available extensions and optionally filter."""
-    extensions = sorted({f.suffix.lower() for f in files if f.suffix})
-    if not extensions:
-        return None
-
-    choices = ["No filter (all files)"] + extensions
-    default_choice = default_ext if (default_ext and default_ext in choices) else choices[0]
-    answer = questionary.select(
-        "Filter by extension?",
-        choices=choices,
-        default=default_choice,
-    ).ask()
-    if answer is None:
-        sys.exit(0)
-    if answer == choices[0]:
-        return None
-    return answer
-
-
-def select_files(files: list[Path]) -> list[Path]:  # pragma: no cover
-    """Checkbox prompt to select files, with a Select All option."""
-    if not files:
-        console.print("[yellow]No files found.[/yellow]")
-        sys.exit(0)
-
-    file_names = [f.name for f in files]
-    choices = [questionary.Choice("Select All", value="__ALL__")] + [
-        questionary.Choice(name, value=name) for name in file_names
-    ]
-
-    selected = questionary.checkbox(
-        "Select files to rename:",
-        choices=choices,
-    ).ask()
-    if selected is None:
-        sys.exit(0)
-
-    if "__ALL__" in selected:
-        return list(files)
-
-    name_set = set(selected)
-    return [f for f in files if f.name in name_set]
-
-
-def ask_operation() -> dict:  # pragma: no cover
-    """Prompt user to pick an operation and collect its parameters."""
-    op_type = questionary.select(
-        "Choose operation:",
-        choices=[
-            "Find/Replace (plain text)",
-            "Find/Replace (regex)",
-            "Add Prefix",
-            "Add Suffix (before extension)",
-            "Pattern Group Detection",
-        ],
-    ).ask()
-    if op_type is None:
-        sys.exit(0)
-
-    if op_type.startswith("Find/Replace"):
-        use_regex = "regex" in op_type
-        find = questionary.text("Find what:").ask()
-        if find is None:
-            sys.exit(0)
-        replace = questionary.text("Replace with (leave empty to delete):").ask()
-        if replace is None:
-            sys.exit(0)
-        return {"type": "find_replace", "find": find, "replace": replace, "regex": use_regex}
-
-    if op_type == "Add Prefix":
-        prefix = questionary.text("Prefix to add:").ask()
-        if prefix is None:
-            sys.exit(0)
-        return {"type": "prefix", "prefix": prefix}
-
-    if op_type.startswith("Add Suffix"):
-        suffix = questionary.text("Suffix to add (before extension):").ask()
-        if suffix is None:
-            sys.exit(0)
-        return {"type": "suffix", "suffix": suffix}
-
-    # Pattern Group Detection — handled separately
-    return {"type": "pattern"}
-
-
 def ask_pattern_operation(filenames: list[str]) -> dict | None:  # pragma: no cover
     """Run pattern detection, let user pick a pattern, and choose action."""
     detected = detect_patterns(filenames)
@@ -214,25 +127,6 @@ def ask_pattern_operation(filenames: list[str]) -> dict | None:  # pragma: no co
 
     return {"type": "find_replace", "find": regex_str, "replace": replace, "regex": True}
 
-
-def collect_operations(filenames: list[str]) -> list[dict]:  # pragma: no cover
-    """Collect one or more operations from the user."""
-    operations = []
-    while True:
-        op = ask_operation()
-
-        if op["type"] == "pattern":
-            pattern_op = ask_pattern_operation(filenames)
-            if pattern_op is None:
-                continue
-            operations.append(pattern_op)
-        else:
-            operations.append(op)
-
-        another = questionary.confirm("Add another operation?", default=False).ask()
-        if another is None or not another:
-            break
-    return operations
 
 
 def apply_find_replace(stem: str, find: str, replace: str, use_regex: bool) -> str:
@@ -402,18 +296,223 @@ def apply_undo(folder: Path, undo_map: list[dict]) -> None:
         console.print(f"[yellow]{skipped} skipped.[/yellow]")
 
 
-def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
-    """Confirm and rename valid files. Skip CONFLICT/INVALID/NO CHANGE."""
+def step_folder(state, config, excluded_names):  # pragma: no cover
+    """Step 1: Folder selection + undo check. No back option (first step)."""
+    default = str(state["folder"]) if state["folder"] else config.get("default_folder", "")
+    folder = ask_folder(default_folder=default)
+
+    # Offer undo if a previous rename map exists in this folder
+    undo_map = load_undo_map(folder)
+    if undo_map:
+        do_undo = questionary.confirm("Undo file found. Undo last rename?", default=False).ask()
+        if do_undo is None:
+            sys.exit(0)
+        if do_undo:
+            apply_undo(folder, undo_map)
+            (folder / UNDO_FILE).unlink()
+            console.print("[green]Undo complete. Undo file deleted.[/green]")
+            sys.exit(0)
+
+    state["folder"] = folder
+    return state
+
+
+def step_ext_filter(state, config, excluded_names):  # pragma: no cover
+    """Step 2: Extension filter selection with Go back."""
+    folder = state["folder"]
+    all_files = list_files(folder, excluded_names=excluded_names)
+    if not all_files:
+        console.print(f"[yellow]No eligible files found in {folder}[/yellow]")
+        sys.exit(0)
+
+    extensions = sorted({f.suffix.lower() for f in all_files if f.suffix})
+    if not extensions:
+        # No extensions to filter by — skip filter, show all files
+        state["ext_filter"] = None
+        state["all_files"] = all_files
+        return state
+
+    no_filter = "No filter (all files)"
+    choices = [GO_BACK, no_filter] + extensions
+    prev_ext = state.get("ext_filter")
+    default_ext = config.get("default_extension_filter")
+    default_choice = prev_ext or default_ext if (prev_ext or default_ext) in choices else no_filter
+
+    answer = questionary.select(
+        "Filter by extension?",
+        choices=choices,
+        default=default_choice,
+    ).ask()
+    if answer is None:
+        sys.exit(0)
+    if answer == GO_BACK:
+        return BACK
+
+    ext_filter = None if answer == no_filter else answer
+    state["ext_filter"] = ext_filter
+
+    if ext_filter:
+        all_files = list_files(folder, ext_filter, excluded_names=excluded_names)
+        if not all_files:
+            console.print(f"[yellow]No {ext_filter} files found.[/yellow]")
+            return BACK
+
+    state["all_files"] = all_files
+
+    # Show file table
+    table = Table(title=f"Files in {folder}")
+    table.add_column("#", style="dim")
+    table.add_column("Filename")
+    table.add_column("Size", justify="right")
+    for i, f in enumerate(all_files, 1):
+        size = f.stat().st_size
+        if size < 1024:
+            size_str = f"{size} B"
+        elif size < 1024 * 1024:
+            size_str = f"{size / 1024:.1f} KB"
+        else:
+            size_str = f"{size / (1024 * 1024):.1f} MB"
+        table.add_row(str(i), f.name, size_str)
+    console.print(table)
+    console.print()
+
+    return state
+
+
+def step_select_files(state, config, excluded_names):  # pragma: no cover
+    """Step 3: File selection via checkboxes with Go back."""
+    all_files = state["all_files"]
+    if not all_files:
+        console.print("[yellow]No files found.[/yellow]")
+        return BACK
+
+    previously_selected = {f.name for f in state.get("selected", [])}
+    file_names = [f.name for f in all_files]
+    choices = [
+        questionary.Choice(GO_BACK, value="__BACK__"),
+        questionary.Choice("Select All", value="__ALL__"),
+    ] + [
+        questionary.Choice(name, value=name, checked=name in previously_selected)
+        for name in file_names
+    ]
+
+    selected = questionary.checkbox(
+        "Select files to rename:",
+        choices=choices,
+    ).ask()
+    if selected is None:
+        sys.exit(0)
+
+    if "__BACK__" in selected:
+        return BACK
+
+    if "__ALL__" in selected:
+        state["selected"] = list(all_files)
+    else:
+        name_set = set(selected)
+        state["selected"] = [f for f in all_files if f.name in name_set]
+
+    if not state["selected"]:
+        console.print("[yellow]No files selected.[/yellow]")
+        return BACK
+
+    console.print(f"\n[green]{len(state['selected'])} file(s) selected.[/green]\n")
+    return state
+
+
+def step_operations(state, config, excluded_names):  # pragma: no cover
+    """Step 4: Collect rename operations with Go back."""
+    filenames = [f.name for f in state["selected"]]
+    operations = []
+
+    while True:
+        op_choices = [
+            GO_BACK,
+            "Find/Replace (plain text)",
+            "Find/Replace (regex)",
+            "Add Prefix",
+            "Add Suffix (before extension)",
+            "Pattern Group Detection",
+        ]
+        op_type = questionary.select(
+            "Choose operation:",
+            choices=op_choices,
+        ).ask()
+        if op_type is None:
+            sys.exit(0)
+        if op_type == GO_BACK:
+            return BACK
+
+        if op_type.startswith("Find/Replace"):
+            use_regex = "regex" in op_type
+            find = questionary.text("Find what:").ask()
+            if find is None:
+                sys.exit(0)
+            replace = questionary.text("Replace with (leave empty to delete):").ask()
+            if replace is None:
+                sys.exit(0)
+            operations.append(
+                {"type": "find_replace", "find": find, "replace": replace, "regex": use_regex}
+            )
+        elif op_type == "Add Prefix":
+            prefix = questionary.text("Prefix to add:").ask()
+            if prefix is None:
+                sys.exit(0)
+            operations.append({"type": "prefix", "prefix": prefix})
+        elif op_type.startswith("Add Suffix"):
+            suffix = questionary.text("Suffix to add (before extension):").ask()
+            if suffix is None:
+                sys.exit(0)
+            operations.append({"type": "suffix", "suffix": suffix})
+        else:
+            pattern_op = ask_pattern_operation(filenames)
+            if pattern_op is None:
+                continue
+            operations.append(pattern_op)
+
+        another = questionary.confirm("Add another operation?", default=False).ask()
+        if another is None or not another:
+            break
+
+    if not operations:
+        console.print("[yellow]No operations defined.[/yellow]")
+        return BACK
+
+    state["operations"] = operations
+    return state
+
+
+def step_preview(state, config, excluded_names):  # pragma: no cover
+    """Step 5: Preview renames and apply, go back, or abort."""
+    pairs = [(f, compute_new_name(f, state["operations"])) for f in state["selected"]]
+    results = validate_new_names(pairs)
+
+    console.print()
+    show_preview(results)
+    console.print()
+
     ok_items = [r for r in results if r["status"] == "OK"]
     if not ok_items:
         console.print("[yellow]Nothing to rename.[/yellow]")
-        return
+        action = questionary.select(
+            "What would you like to do?",
+            choices=[GO_BACK, "Abort"],
+        ).ask()
+        if action is None or action == "Abort":
+            sys.exit(0)
+        return BACK
 
-    confirm = questionary.confirm("Apply renames?", default=False).ask()
-    if confirm is None or not confirm:
+    action = questionary.select(
+        "What would you like to do?",
+        choices=["Apply renames", GO_BACK, "Abort"],
+    ).ask()
+    if action is None or action == "Abort":
         console.print("[yellow]Aborted. No files were changed.[/yellow]")
-        return
+        sys.exit(0)
+    if action == GO_BACK:
+        return BACK
 
+    # Apply renames
     success = 0
     errors = 0
     for r in ok_items:
@@ -431,14 +530,34 @@ def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
         console.print(f"[red]{errors} file(s) failed.[/red]")
 
     if success > 0:
-        write_log(ok_items[0]["original"].parent, results)
+        folder = ok_items[0]["original"].parent
+        write_log(folder, results)
         undo_map = [{"old": r["original"].name, "new": r["new_name"]} for r in ok_items]
-        undo_path = ok_items[0]["original"].parent / UNDO_FILE
         try:
-            save_undo_map(ok_items[0]["original"].parent, undo_map)
-            console.print(f"[dim]Undo map saved to {undo_path}[/dim]")
+            save_undo_map(folder, undo_map)
+            console.print(f"[dim]Undo map saved to {folder / UNDO_FILE}[/dim]")
         except OSError as e:
             console.print(f"[yellow]Warning: could not save undo map: {e}[/yellow]")
+
+    return state
+
+
+# State keys set by each step (for clearing downstream state on back navigation)
+_STEP_FUNCTIONS = [step_folder, step_ext_filter, step_select_files, step_operations, step_preview]
+_STEP_STATE_KEYS = [
+    ["folder"],                    # step 0
+    ["ext_filter", "all_files"],   # step 1
+    ["selected"],                  # step 2
+    ["operations"],                # step 3
+    [],                            # step 4
+]
+_STATE_DEFAULTS = {
+    "folder": None,
+    "ext_filter": None,
+    "all_files": [],
+    "selected": [],
+    "operations": [],
+}
 
 
 def main():  # pragma: no cover
@@ -446,78 +565,22 @@ def main():  # pragma: no cover
 
     config = load_config()
     excluded_names = frozenset(n.lower() for n in config.get("excluded_files", []))
+    state = dict(_STATE_DEFAULTS)
 
-    folder = ask_folder(default_folder=config.get("default_folder", ""))
-
-    # Offer undo if a previous rename map exists in this folder
-    undo_map = load_undo_map(folder)
-    if undo_map:
-        do_undo = questionary.confirm("Undo file found. Undo last rename?", default=False).ask()
-        if do_undo is None:
-            sys.exit(0)
-        if do_undo:
-            apply_undo(folder, undo_map)
-            (folder / UNDO_FILE).unlink()
-            console.print("[green]Undo complete. Undo file deleted.[/green]")
-            sys.exit(0)
-
-    # List all eligible files first
-    all_files = list_files(folder, excluded_names=excluded_names)
-    if not all_files:
-        console.print(f"[yellow]No eligible files found in {folder}[/yellow]")
-        sys.exit(0)
-
-    # Optional extension filter
-    ext_filter = ask_extension_filter(all_files, default_ext=config.get("default_extension_filter"))
-    if ext_filter:
-        all_files = list_files(folder, ext_filter, excluded_names=excluded_names)
-        if not all_files:
-            console.print(f"[yellow]No {ext_filter} files found.[/yellow]")
-            sys.exit(0)
-
-    # Show file list
-    table = Table(title=f"Files in {folder}")
-    table.add_column("#", style="dim")
-    table.add_column("Filename")
-    table.add_column("Size", justify="right")
-    for i, f in enumerate(all_files, 1):
-        size = f.stat().st_size
-        if size < 1024:
-            size_str = f"{size} B"
-        elif size < 1024 * 1024:
-            size_str = f"{size / 1024:.1f} KB"
+    step_idx = 0
+    while step_idx < len(_STEP_FUNCTIONS):
+        result = _STEP_FUNCTIONS[step_idx](state, config, excluded_names)
+        if result == BACK:
+            if step_idx > 0:
+                # Clear state from current step onwards
+                for i in range(step_idx, len(_STEP_FUNCTIONS)):
+                    for key in _STEP_STATE_KEYS[i]:
+                        state[key] = (
+                            None if _STATE_DEFAULTS[key] is None else type(_STATE_DEFAULTS[key])()
+                        )
+                step_idx -= 1
         else:
-            size_str = f"{size / (1024 * 1024):.1f} MB"
-        table.add_row(str(i), f.name, size_str)
-    console.print(table)
-    console.print()
-
-    # Select files
-    selected = select_files(all_files)
-    if not selected:
-        console.print("[yellow]No files selected.[/yellow]")
-        sys.exit(0)
-
-    console.print(f"\n[green]{len(selected)} file(s) selected.[/green]\n")
-
-    # Collect operations
-    filenames = [f.name for f in selected]
-    operations = collect_operations(filenames)
-    if not operations:
-        console.print("[yellow]No operations defined.[/yellow]")
-        sys.exit(0)
-
-    # Compute new names and validate
-    pairs = [(f, compute_new_name(f, operations)) for f in selected]
-    results = validate_new_names(pairs)
-
-    # Preview
-    console.print()
-    show_preview(results)
-    console.print()
-
-    # Confirm and apply
-    confirm_and_apply(results)
+            step_idx += 1
 
 
 if __name__ == "__main__":  # pragma: no cover
