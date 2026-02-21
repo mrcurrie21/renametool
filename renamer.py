@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import questionary
+import tomllib
 from rich.console import Console
 from rich.table import Table
 
@@ -17,11 +18,28 @@ INVALID_CHARS = set('<>:"/\\|?*')
 MAX_NAME_LEN = 255
 
 
-def ask_folder() -> Path:  # pragma: no cover
+def load_config() -> dict:
+    """Load renametool.toml from alongside the script.
+
+    Returns an empty dict if the file does not exist, and prints a warning
+    (then returns an empty dict) if the file cannot be parsed.
+    """
+    config_path = Path(__file__).parent / "renametool.toml"
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "rb") as f:
+            return tomllib.load(f)
+    except tomllib.TOMLDecodeError as e:
+        console.print(f"[yellow]Warning: could not parse renametool.toml: {e}[/yellow]")
+        return {}
+
+
+def ask_folder(default_folder: str = "") -> Path:  # pragma: no cover
     """Prompt for a folder path and validate it exists."""
     path_str = questionary.text(
         "Enter folder path:",
-        default=str(Path.cwd()),
+        default=default_folder or str(Path.cwd()),
     ).ask()
     if path_str is None:
         sys.exit(0)
@@ -32,7 +50,11 @@ def ask_folder() -> Path:  # pragma: no cover
     return folder
 
 
-def list_files(folder: Path, ext_filter: str | None = None) -> list[Path]:
+def list_files(
+    folder: Path,
+    ext_filter: str | None = None,
+    excluded_names: frozenset[str] = frozenset(),
+) -> list[Path]:
     """Return non-hidden files in folder, filtered by extension if given, sorted alphabetically."""
     files = []
     for entry in folder.iterdir():
@@ -41,6 +63,8 @@ def list_files(folder: Path, ext_filter: str | None = None) -> list[Path]:
         name = entry.name
         if name.startswith(".") or name.lower() in HIDDEN_NAMES:
             continue
+        if name.lower() in excluded_names:
+            continue
         if ext_filter and entry.suffix.lower() != ext_filter.lower():
             continue
         files.append(entry)
@@ -48,16 +72,21 @@ def list_files(folder: Path, ext_filter: str | None = None) -> list[Path]:
     return files
 
 
-def ask_extension_filter(files: list[Path]) -> str | None:  # pragma: no cover
+def ask_extension_filter(
+    files: list[Path],
+    default_ext: str | None = None,
+) -> str | None:  # pragma: no cover
     """Show available extensions and optionally filter."""
     extensions = sorted({f.suffix.lower() for f in files if f.suffix})
     if not extensions:
         return None
 
     choices = ["No filter (all files)"] + extensions
+    default_choice = default_ext if (default_ext and default_ext in choices) else choices[0]
     answer = questionary.select(
         "Filter by extension?",
         choices=choices,
+        default=default_choice,
     ).ask()
     if answer is None:
         sys.exit(0)
@@ -339,18 +368,21 @@ def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
 def main():  # pragma: no cover
     console.print("[bold blue]═══ Batch File Rename Tool ═══[/bold blue]\n")
 
-    folder = ask_folder()
+    config = load_config()
+    excluded_names = frozenset(n.lower() for n in config.get("excluded_files", []))
+
+    folder = ask_folder(default_folder=config.get("default_folder", ""))
 
     # List all eligible files first
-    all_files = list_files(folder)
+    all_files = list_files(folder, excluded_names=excluded_names)
     if not all_files:
         console.print(f"[yellow]No eligible files found in {folder}[/yellow]")
         sys.exit(0)
 
     # Optional extension filter
-    ext_filter = ask_extension_filter(all_files)
+    ext_filter = ask_extension_filter(all_files, default_ext=config.get("default_extension_filter"))
     if ext_filter:
-        all_files = list_files(folder, ext_filter)
+        all_files = list_files(folder, ext_filter, excluded_names=excluded_names)
         if not all_files:
             console.print(f"[yellow]No {ext_filter} files found.[/yellow]")
             sys.exit(0)
