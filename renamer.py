@@ -33,7 +33,7 @@ def ask_folder() -> Path:  # pragma: no cover
 
 
 def list_files(folder: Path, ext_filter: str | None = None) -> list[Path]:
-    """Return non-hidden files in folder, optionally filtered by extension, sorted alphabetically."""
+    """Return non-hidden files in folder, filtered by extension if given, sorted alphabetically."""
     files = []
     for entry in folder.iterdir():
         if not entry.is_file():
@@ -251,7 +251,11 @@ def validate_new_names(pairs: list[tuple[Path, str]]) -> list[dict]:
 
         if new_name == original.name:
             status = "NO CHANGE"
-        elif not new_name or new_name == original.suffix or not new_name.removesuffix(original.suffix).rstrip('.'):
+        elif (
+            not new_name
+            or new_name == original.suffix
+            or not new_name.removesuffix(original.suffix).rstrip(".")
+        ):
             status = "INVALID (empty name)"
         elif len(new_name) > MAX_NAME_LEN:
             status = "INVALID (name too long)"
@@ -262,11 +266,13 @@ def validate_new_names(pairs: list[tuple[Path, str]]) -> list[dict]:
         elif (original.parent / new_name).exists() and new_name.lower() != original.name.lower():
             status = "CONFLICT"
 
-        results.append({
-            "original": original,
-            "new_name": new_name,
-            "status": status,
-        })
+        results.append(
+            {
+                "original": original,
+                "new_name": new_name,
+                "status": status,
+            }
+        )
 
     return results
 
@@ -297,7 +303,8 @@ def show_preview(results: list[dict]) -> None:
 
     ok_count = sum(1 for r in results if r["status"] == "OK")
     skip_count = len(results) - ok_count
-    console.print(f"\n[green]{ok_count} file(s) will be renamed.[/green]  [yellow]{skip_count} skipped.[/yellow]")
+    console.print(f"\n[green]{ok_count} file(s) will be renamed.[/green]", end="  ")
+    console.print(f"[yellow]{skip_count} skipped.[/yellow]")
 
 
 def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover

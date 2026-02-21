@@ -38,11 +38,13 @@ def detect_patterns(filenames: list[str]) -> list[dict]:
                     examples.append(m.group())
 
         if len(matches) >= THRESHOLD:
-            results.append({
-                "name": name,
-                "regex": regex,
-                "match_count": len(matches),
-                "examples": examples,
-            })
+            results.append(
+                {
+                    "name": name,
+                    "regex": regex,
+                    "match_count": len(matches),
+                    "examples": examples,
+                }
+            )
 
     return results
