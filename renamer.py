@@ -1,6 +1,5 @@
 """Batch file rename TUI wizard."""
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -18,7 +17,7 @@ INVALID_CHARS = set('<>:"/\\|?*')
 MAX_NAME_LEN = 255
 
 
-def ask_folder() -> Path:
+def ask_folder() -> Path:  # pragma: no cover
     """Prompt for a folder path and validate it exists."""
     path_str = questionary.text(
         "Enter folder path:",
@@ -49,7 +48,7 @@ def list_files(folder: Path, ext_filter: str | None = None) -> list[Path]:
     return files
 
 
-def ask_extension_filter(files: list[Path]) -> str | None:
+def ask_extension_filter(files: list[Path]) -> str | None:  # pragma: no cover
     """Show available extensions and optionally filter."""
     extensions = sorted({f.suffix.lower() for f in files if f.suffix})
     if not extensions:
@@ -67,7 +66,7 @@ def ask_extension_filter(files: list[Path]) -> str | None:
     return answer
 
 
-def select_files(files: list[Path]) -> list[Path]:
+def select_files(files: list[Path]) -> list[Path]:  # pragma: no cover
     """Checkbox prompt to select files, with a Select All option."""
     if not files:
         console.print("[yellow]No files found.[/yellow]")
@@ -92,7 +91,7 @@ def select_files(files: list[Path]) -> list[Path]:
     return [f for f in files if f.name in name_set]
 
 
-def ask_operation() -> dict:
+def ask_operation() -> dict:  # pragma: no cover
     """Prompt user to pick an operation and collect its parameters."""
     op_type = questionary.select(
         "Choose operation:",
@@ -133,7 +132,7 @@ def ask_operation() -> dict:
     return {"type": "pattern"}
 
 
-def ask_pattern_operation(filenames: list[str]) -> dict | None:
+def ask_pattern_operation(filenames: list[str]) -> dict | None:  # pragma: no cover
     """Run pattern detection, let user pick a pattern, and choose action."""
     detected = detect_patterns(filenames)
 
@@ -184,7 +183,7 @@ def ask_pattern_operation(filenames: list[str]) -> dict | None:
     return {"type": "find_replace", "find": regex_str, "replace": replace, "regex": True}
 
 
-def collect_operations(filenames: list[str]) -> list[dict]:
+def collect_operations(filenames: list[str]) -> list[dict]:  # pragma: no cover
     """Collect one or more operations from the user."""
     operations = []
     while True:
@@ -301,7 +300,7 @@ def show_preview(results: list[dict]) -> None:
     console.print(f"\n[green]{ok_count} file(s) will be renamed.[/green]  [yellow]{skip_count} skipped.[/yellow]")
 
 
-def confirm_and_apply(results: list[dict]) -> None:
+def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
     """Confirm and rename valid files. Skip CONFLICT/INVALID/NO CHANGE."""
     ok_items = [r for r in results if r["status"] == "OK"]
     if not ok_items:
@@ -330,7 +329,7 @@ def confirm_and_apply(results: list[dict]) -> None:
         console.print(f"[red]{errors} file(s) failed.[/red]")
 
 
-def main():
+def main():  # pragma: no cover
     console.print("[bold blue]═══ Batch File Rename Tool ═══[/bold blue]\n")
 
     folder = ask_folder()
@@ -394,5 +393,5 @@ def main():
     confirm_and_apply(results)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
