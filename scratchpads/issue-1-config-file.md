@@ -1,6 +1,10 @@
 # Issue #1 — Add config file for user defaults
 https://github.com/mrcurrie21/renametool/issues/1
 
+## Resolution
+- **PR:** #11 — merged 2026-02-21
+- **Summary:** Added `load_config()` reading TOML from `renametool.toml`, wired `default_folder`, `default_extension_filter`, and `excluded_files` into the wizard. Added `renametool.toml.example` and README docs.
+
 ## Decisions
 - Format: TOML (stdlib `tomllib` Python 3.11+, fallback `tomli` dependency)
 - Location: alongside script — `Path(__file__).parent / "renametool.toml"`

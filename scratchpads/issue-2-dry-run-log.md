@@ -1,6 +1,10 @@
 # Issue #2 — Add dry-run log output
 https://github.com/mrcurrie21/renametool/issues/2
 
+## Resolution
+- **PR:** #12 — merged 2026-02-21
+- **Summary:** Added `write_log()` that appends timestamped session blocks to `.renametool.log` in the target folder. Called automatically from `confirm_and_apply()` when at least one rename succeeds. 12 new tests.
+
 ## Decisions
 - Log file: `.renametool.log` (hidden dot prefix keeps it out of the file list)
 - Append mode so multiple sessions accumulate
