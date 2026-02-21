@@ -128,7 +128,6 @@ def ask_pattern_operation(filenames: list[str]) -> dict | None:  # pragma: no co
     return {"type": "find_replace", "find": regex_str, "replace": replace, "regex": True}
 
 
-
 def apply_find_replace(stem: str, find: str, replace: str, use_regex: bool) -> str:
     if use_regex:
         return re.sub(find, replace, stem)
@@ -336,7 +335,8 @@ def step_ext_filter(state, config, excluded_names):  # pragma: no cover
     choices = [GO_BACK, no_filter] + extensions
     prev_ext = state.get("ext_filter")
     default_ext = config.get("default_extension_filter")
-    default_choice = prev_ext or default_ext if (prev_ext or default_ext) in choices else no_filter
+    preferred = prev_ext or default_ext
+    default_choice = preferred if preferred in choices else no_filter
 
     answer = questionary.select(
         "Filter by extension?",
