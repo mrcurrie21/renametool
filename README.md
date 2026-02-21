@@ -13,9 +13,27 @@ A lightweight Python TUI tool for batch-renaming files on Windows.
 - Skips hidden/system files (dotfiles, `desktop.ini`, `thumbs.db`)
 - Per-file error handling — one locked file won't abort the batch
 
+## Configuration
+
+Copy `renametool.toml.example` to `renametool.toml` in the same directory as `renamer.py` and edit it to set your defaults:
+
+```toml
+# Pre-fill the folder prompt
+default_folder = "C:/Users/alice/Movies"
+
+# Pre-select this extension in the filter prompt (include the leading dot)
+default_extension_filter = ".mkv"
+
+# Hide these filenames from the file list (case-insensitive)
+excluded_files = ["sample.mkv", "readme.txt"]
+```
+
+All keys are optional. If the file doesn't exist the tool behaves exactly as it does today.
+`renametool.toml` is excluded from Git so your personal settings are never committed.
+
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - Windows 11 (tested), should work on other platforms
 
 ## Setup

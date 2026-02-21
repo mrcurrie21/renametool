@@ -64,3 +64,38 @@ def test_ext_filter_case_insensitive(tmp_path):
 
 def test_empty_directory(tmp_path):
     assert list_files(tmp_path) == []
+
+
+# --- excluded_names parameter ---
+
+
+def test_excluded_names_hides_file(sample_dir):
+    names = [f.name for f in list_files(sample_dir, excluded_names=frozenset(["notes.txt"]))]
+    assert "notes.txt" not in names
+
+
+def test_excluded_names_case_insensitive(tmp_path):
+    (tmp_path / "Sample.mkv").write_text("")
+    (tmp_path / "other.mkv").write_text("")
+    # Exclude by lowercase name
+    names = [f.name for f in list_files(tmp_path, excluded_names=frozenset(["sample.mkv"]))]
+    assert "Sample.mkv" not in names
+    assert "other.mkv" in names
+
+
+def test_excluded_names_does_not_hide_other_files(sample_dir):
+    names = [f.name for f in list_files(sample_dir, excluded_names=frozenset(["notes.txt"]))]
+    assert "IMG_001.jpg" in names
+
+
+def test_excluded_names_empty_frozenset_excludes_nothing(sample_dir):
+    all_files = list_files(sample_dir)
+    with_empty = list_files(sample_dir, excluded_names=frozenset())
+    assert len(all_files) == len(with_empty)
+
+
+def test_excluded_names_multiple_files(tmp_path):
+    for name in ["a.txt", "b.txt", "c.txt"]:
+        (tmp_path / name).write_text("")
+    names = [f.name for f in list_files(tmp_path, excluded_names=frozenset(["a.txt", "b.txt"]))]
+    assert names == ["c.txt"]
