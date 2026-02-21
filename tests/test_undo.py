@@ -1,12 +1,8 @@
 """Tests for renamer.save_undo_map(), load_undo_map(), and apply_undo()."""
 
 import json
-from pathlib import Path
-
-import pytest
 
 from renamer import UNDO_FILE, apply_undo, load_undo_map, save_undo_map
-
 
 # ---------------------------------------------------------------------------
 # Helpers
