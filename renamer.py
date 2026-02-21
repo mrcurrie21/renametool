@@ -1,5 +1,6 @@
 """Batch file rename TUI wizard."""
 
+import json
 import re
 import sys
 from datetime import datetime
@@ -17,6 +18,7 @@ console = Console()
 HIDDEN_NAMES = {"desktop.ini", "thumbs.db"}
 INVALID_CHARS = set('<>:"/\\|?*')
 MAX_NAME_LEN = 255
+UNDO_FILE = ".renametool_undo.json"
 
 
 def load_config() -> dict:
@@ -353,6 +355,53 @@ def write_log(folder: Path, results: list[dict]) -> None:
     console.print(f"[dim]Log written to {log_path}[/dim]")
 
 
+def save_undo_map(folder: Path, undo_map: list[dict]) -> None:
+    """Write rename pairs to UNDO_FILE in folder.
+
+    undo_map is a list of {"old": "original.txt", "new": "renamed.txt"} dicts,
+    representing the rename that was just applied (old → new).  The file can
+    later be read by load_undo_map() to reverse those renames.
+    """
+    undo_path = folder / UNDO_FILE
+    with open(undo_path, "w", encoding="utf-8") as f:
+        json.dump(undo_map, f, indent=2)
+
+
+def load_undo_map(folder: Path) -> list[dict] | None:
+    """Read and return the undo map from folder, or None if not found/unreadable."""
+    undo_path = folder / UNDO_FILE
+    if not undo_path.exists():
+        return None
+    try:
+        with open(undo_path, encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def apply_undo(folder: Path, undo_map: list[dict]) -> None:
+    """Reverse each rename in undo_map (new → old); skip missing files with a warning."""
+    success = 0
+    skipped = 0
+    for entry in undo_map:
+        src = folder / entry["new"]
+        dst = folder / entry["old"]
+        if not src.exists():
+            console.print(f"[yellow]Skipping (not found): {entry['new']}[/yellow]")
+            skipped += 1
+            continue
+        try:
+            src.rename(dst)
+            success += 1
+        except OSError as e:
+            console.print(f"[red]Error undoing {entry['new']}: {e}[/red]")
+            skipped += 1
+
+    console.print(f"\n[green]{success} file(s) restored.[/green]")
+    if skipped:
+        console.print(f"[yellow]{skipped} skipped.[/yellow]")
+
+
 def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
     """Confirm and rename valid files. Skip CONFLICT/INVALID/NO CHANGE."""
     ok_items = [r for r in results if r["status"] == "OK"]
@@ -383,6 +432,13 @@ def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
 
     if success > 0:
         write_log(ok_items[0]["original"].parent, results)
+        undo_map = [{"old": r["original"].name, "new": r["new_name"]} for r in ok_items]
+        undo_path = ok_items[0]["original"].parent / UNDO_FILE
+        try:
+            save_undo_map(ok_items[0]["original"].parent, undo_map)
+            console.print(f"[dim]Undo map saved to {undo_path}[/dim]")
+        except OSError as e:
+            console.print(f"[yellow]Warning: could not save undo map: {e}[/yellow]")
 
 
 def main():  # pragma: no cover
@@ -392,6 +448,18 @@ def main():  # pragma: no cover
     excluded_names = frozenset(n.lower() for n in config.get("excluded_files", []))
 
     folder = ask_folder(default_folder=config.get("default_folder", ""))
+
+    # Offer undo if a previous rename map exists in this folder
+    undo_map = load_undo_map(folder)
+    if undo_map:
+        do_undo = questionary.confirm("Undo file found. Undo last rename?", default=False).ask()
+        if do_undo is None:
+            sys.exit(0)
+        if do_undo:
+            apply_undo(folder, undo_map)
+            (folder / UNDO_FILE).unlink()
+            console.print("[green]Undo complete. Undo file deleted.[/green]")
+            sys.exit(0)
 
     # List all eligible files first
     all_files = list_files(folder, excluded_names=excluded_names)
