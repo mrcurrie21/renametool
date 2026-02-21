@@ -433,7 +433,12 @@ def confirm_and_apply(results: list[dict]) -> None:  # pragma: no cover
     if success > 0:
         write_log(ok_items[0]["original"].parent, results)
         undo_map = [{"old": r["original"].name, "new": r["new_name"]} for r in ok_items]
-        save_undo_map(ok_items[0]["original"].parent, undo_map)
+        undo_path = ok_items[0]["original"].parent / UNDO_FILE
+        try:
+            save_undo_map(ok_items[0]["original"].parent, undo_map)
+            console.print(f"[dim]Undo map saved to {undo_path}[/dim]")
+        except OSError as e:
+            console.print(f"[yellow]Warning: could not save undo map: {e}[/yellow]")
 
 
 def main():  # pragma: no cover
