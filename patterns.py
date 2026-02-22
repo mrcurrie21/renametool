@@ -19,9 +19,13 @@ PATTERNS = {
 
 TV_REGEX = re.compile(
     r"(?P<show>.+?)[.\s_-]+[Ss](?P<season>\d{1,2})[Ee](?P<episode>\d{1,2})"
-    r"(?:[.\s_-]*(?P<title>[^(\[]+?))?"
-    r"(?:[.\s_-]*(?:720p|1080p|2160p|4K|BluRay|WEB-DL|HDRip|BRRip|WEBRip|HDTV"
-    r"|x264|x265|HEVC|H\.?264|H\.?265|AVC).*)?$",
+    r"(?P<remainder>[.\s_-].*)?$",
+    re.IGNORECASE,
+)
+
+_JUNK_RE = re.compile(
+    r"(?:720p|1080p|2160p|4K|BluRay|WEB-DL|HDRip|BRRip|WEBRip|HDTV"
+    r"|x264|x265|HEVC|H\.?264|H\.?265|AVC|\[[^\]]*\]|-[A-Za-z0-9]+$).*$",
     re.IGNORECASE,
 )
 
@@ -44,15 +48,20 @@ def parse_tv_filename(filename: str) -> dict | None:
     Returns a dict with keys: show, season, episode, title.
     Returns None if the filename doesn't match the TV pattern.
     """
-    stem = Path(filename).stem
+    # Strip known media extensions; avoid Path.stem which mishandles e.g. "Show.S01E01"
+    name = Path(filename).name
+    ext_match = re.search(r"\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|ts|srt|sub)$", name, re.I)
+    stem = name[: ext_match.start()] if ext_match else name
     m = TV_REGEX.match(stem)
     if not m:
         return None
     show = _clean_name(m.group("show"))
     season = int(m.group("season"))
     episode = int(m.group("episode"))
-    title = m.group("title")
-    title = _clean_name(title) if title else ""
+    remainder = m.group("remainder") or ""
+    # Strip junk tags from remainder to extract episode title
+    title_raw = _JUNK_RE.sub("", remainder).strip(" ._-")
+    title = _clean_name(title_raw) if title_raw else ""
     return {"show": show, "season": season, "episode": episode, "title": title}
 
 
