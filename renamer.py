@@ -154,6 +154,26 @@ def apply_case(stem: str, mode: str) -> str:
     return stem
 
 
+def normalize_extension(raw: str) -> str:
+    """Normalize user input to a single leading-dot extension (e.g. '..jpg' → '.jpg')."""
+    stripped = raw.lstrip(".")
+    return "." + stripped if stripped else ""
+
+
+def validate_extension(ext: str) -> str | None:
+    """Return an error message if ext is invalid, or None if OK."""
+    if not ext or ext == ".":
+        return "Extension cannot be empty."
+    body = ext.lstrip(".")
+    if not body:
+        return "Extension cannot be empty."
+    if any(c in INVALID_CHARS for c in body):
+        return f"Extension contains invalid characters: {ext}"
+    if " " in body:
+        return f"Extension contains spaces: {ext}"
+    return None
+
+
 def compute_new_name(file: Path, operations: list[dict]) -> str:
     """Apply all operations sequentially to the stem, reattach extension."""
     stem = file.stem
@@ -168,6 +188,8 @@ def compute_new_name(file: Path, operations: list[dict]) -> str:
             stem = apply_suffix(stem, op["suffix"])
         elif op["type"] == "case":
             stem = apply_case(stem, op["mode"])
+        elif op["type"] == "ext_change":
+            ext = op["ext"]
 
     return stem + ext
 
@@ -188,13 +210,14 @@ def validate_new_names(pairs: list[tuple[Path, str]]) -> list[dict]:
     for original, new_name in pairs:
         status = "OK"
 
+        # Check for empty stem: split on the last dot to find the part before
+        # the extension. Names like ".txt" or "..." have no meaningful stem.
+        parts = new_name.rsplit(".", 1) if new_name else [""]
+        stem_before_ext = parts[0] if len(parts) == 2 else new_name
+        stem_empty = not new_name or not stem_before_ext.rstrip(".")
         if new_name == original.name:
             status = "NO CHANGE"
-        elif (
-            not new_name
-            or new_name == original.suffix
-            or not new_name.removesuffix(original.suffix).rstrip(".")
-        ):
+        elif stem_empty:
             status = "INVALID (empty name)"
         elif len(new_name) > MAX_NAME_LEN:
             status = "INVALID (name too long)"
@@ -447,6 +470,7 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
             "Add Prefix",
             "Add Suffix (before extension)",
             "Change Case",
+            "Change Extension",
             "Pattern Group Detection",
         ]
         op_type = questionary.select(
@@ -479,6 +503,16 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
             if suffix is None:
                 sys.exit(0)
             operations.append({"type": "suffix", "suffix": suffix})
+        elif op_type == "Change Extension":
+            raw_ext = questionary.text("New extension (e.g. .jpg):").ask()
+            if raw_ext is None:
+                sys.exit(0)
+            ext = normalize_extension(raw_ext)
+            error = validate_extension(ext)
+            if error:
+                console.print(f"[red]{error}[/red]")
+                continue
+            operations.append({"type": "ext_change", "ext": ext})
         elif op_type == "Change Case":
             case_mode = questionary.select(
                 "Select case mode:",
@@ -574,11 +608,11 @@ def step_preview(state, config, excluded_names):  # pragma: no cover
 # State keys set by each step (for clearing downstream state on back navigation)
 _STEP_FUNCTIONS = [step_folder, step_ext_filter, step_select_files, step_operations, step_preview]
 _STEP_STATE_KEYS = [
-    ["folder"],                    # step 0
-    ["ext_filter", "all_files"],   # step 1
-    ["selected"],                  # step 2
-    ["operations"],                # step 3
-    [],                            # step 4
+    ["folder"],  # step 0
+    ["ext_filter", "all_files"],  # step 1
+    ["selected"],  # step 2
+    ["operations"],  # step 3
+    [],  # step 4
 ]
 _STATE_DEFAULTS = {
     "folder": None,
