@@ -11,7 +11,7 @@ import tomllib
 from rich.console import Console
 from rich.table import Table
 
-from patterns import detect_patterns
+from patterns import detect_patterns, parse_movie_filename, parse_tv_filename
 
 console = Console()
 
@@ -128,6 +128,97 @@ def ask_pattern_operation(filenames: list[str]) -> dict | None:  # pragma: no co
     return {"type": "find_replace", "find": regex_str, "replace": replace, "regex": True}
 
 
+def ask_media_rename(selected_files: list) -> list[dict] | None:  # pragma: no cover
+    """Run media library rename sub-flow. Returns a list of per-file operations."""
+    media_type = questionary.select(
+        "Media type:",
+        choices=["TV Show", "Movie"],
+    ).ask()
+    if media_type is None:
+        sys.exit(0)
+
+    if media_type == "TV Show":
+        return _ask_tv_rename(selected_files)
+    else:
+        return _ask_movie_rename(selected_files)
+
+
+def _ask_tv_rename(selected_files: list) -> list[dict] | None:  # pragma: no cover
+    """Parse TV filenames, show detected components, let user confirm."""
+    parsed = []
+    for f in selected_files:
+        info = parse_tv_filename(f.name)
+        parsed.append((f, info))
+
+    # Show detection results
+    table = Table(title="Detected TV Components")
+    table.add_column("File", style="cyan")
+    table.add_column("Show")
+    table.add_column("Season", justify="right")
+    table.add_column("Episode", justify="right")
+    table.add_column("Title")
+    table.add_column("Status")
+
+    has_any = False
+    for f, info in parsed:
+        if info:
+            has_any = True
+            table.add_row(
+                f.name,
+                info["show"],
+                str(info["season"]),
+                str(info["episode"]),
+                info["title"] or "(none)",
+                "[green]detected[/green]",
+            )
+        else:
+            table.add_row(f.name, "", "", "", "", "[yellow]not detected[/yellow]")
+    console.print(table)
+
+    if not has_any:
+        console.print("[yellow]No TV patterns detected in selected files.[/yellow]")
+        return None
+
+    confirm = questionary.confirm("Apply TV rename to detected files?", default=True).ask()
+    if confirm is None:
+        sys.exit(0)
+    if not confirm:
+        return None
+
+    # Build one operation per file (only for detected files)
+    operations = []
+    for f, info in parsed:
+        if info:
+            operations.append({"type": "media_tv", "info": info, "file": f.name})
+    return operations
+
+
+def _ask_movie_rename(selected_files: list) -> list[dict] | None:  # pragma: no cover
+    """Parse movie filenames, let user confirm or override title/year."""
+    # Try to detect from the first file
+    first_info = parse_movie_filename(selected_files[0].name) if selected_files else None
+
+    default_title = first_info["title"] if first_info else ""
+    default_year = str(first_info["year"]) if first_info else ""
+
+    title = questionary.text("Movie title:", default=default_title).ask()
+    if title is None:
+        sys.exit(0)
+    year_str = questionary.text("Movie year:", default=default_year).ask()
+    if year_str is None:
+        sys.exit(0)
+
+    try:
+        year = int(year_str)
+    except ValueError:
+        console.print("[red]Invalid year.[/red]")
+        return None
+
+    info = {"title": title, "year": year}
+    # Apply the same movie info to all selected files
+    return [{"type": "media_movie", "info": info, "file": f.name} for f in selected_files]
+
+
 def apply_find_replace(stem: str, find: str, replace: str, use_regex: bool) -> str:
     if use_regex:
         return re.sub(find, replace, stem)
@@ -152,6 +243,25 @@ def apply_case(stem: str, mode: str) -> str:
     elif mode == "snake_case":
         return re.sub(r"[\s\-]+", "_", stem.lower())
     return stem
+
+
+def format_tv_name(info: dict, ext: str) -> str:
+    """Build a Plex/Jellyfin-compatible TV episode filename.
+
+    Format: Show - S01E01 - Episode Title.ext (title omitted if empty).
+    """
+    name = f"{info['show']} - S{info['season']:02d}E{info['episode']:02d}"
+    if info.get("title"):
+        name += f" - {info['title']}"
+    return name + ext
+
+
+def format_movie_name(info: dict, ext: str) -> str:
+    """Build a Plex/Jellyfin-compatible movie filename.
+
+    Format: Title (Year).ext
+    """
+    return f"{info['title']} ({info['year']}){ext}"
 
 
 def normalize_extension(raw: str) -> str:
@@ -190,6 +300,14 @@ def compute_new_name(file: Path, operations: list[dict]) -> str:
             stem = apply_case(stem, op["mode"])
         elif op["type"] == "ext_change":
             ext = op["ext"]
+        elif op["type"] == "media_tv":
+            if op.get("file") and op["file"] != file.name:
+                continue
+            return format_tv_name(op["info"], ext)
+        elif op["type"] == "media_movie":
+            if op.get("file") and op["file"] != file.name:
+                continue
+            return format_movie_name(op["info"], ext)
 
     return stem + ext
 
@@ -471,6 +589,7 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
             "Add Suffix (before extension)",
             "Change Case",
             "Change Extension",
+            "Media Library Rename",
             "Pattern Group Detection",
         ]
         op_type = questionary.select(
@@ -527,6 +646,12 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
                 "snake_case": "snake_case",
             }
             operations.append({"type": "case", "mode": mode_map[case_mode]})
+        elif op_type == "Media Library Rename":
+            media_ops = ask_media_rename(state["selected"])
+            if media_ops is None:
+                continue
+            operations.extend(media_ops)
+            break  # Media rename replaces the entire name; skip "add another?"
         else:
             pattern_op = ask_pattern_operation(filenames)
             if pattern_op is None:
