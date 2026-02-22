@@ -608,11 +608,11 @@ def step_preview(state, config, excluded_names):  # pragma: no cover
 # State keys set by each step (for clearing downstream state on back navigation)
 _STEP_FUNCTIONS = [step_folder, step_ext_filter, step_select_files, step_operations, step_preview]
 _STEP_STATE_KEYS = [
-    ["folder"],                    # step 0
-    ["ext_filter", "all_files"],   # step 1
-    ["selected"],                  # step 2
-    ["operations"],                # step 3
-    [],                            # step 4
+    ["folder"],  # step 0
+    ["ext_filter", "all_files"],  # step 1
+    ["selected"],  # step 2
+    ["operations"],  # step 3
+    [],  # step 4
 ]
 _STATE_DEFAULTS = {
     "folder": None,
