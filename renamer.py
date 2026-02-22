@@ -142,6 +142,18 @@ def apply_suffix(stem: str, suffix: str) -> str:
     return stem + suffix
 
 
+def apply_case(stem: str, mode: str) -> str:
+    if mode == "uppercase":
+        return stem.upper()
+    elif mode == "lowercase":
+        return stem.lower()
+    elif mode == "title":
+        return stem.title()
+    elif mode == "snake_case":
+        return re.sub(r"[\s\-]+", "_", stem.lower())
+    return stem
+
+
 def compute_new_name(file: Path, operations: list[dict]) -> str:
     """Apply all operations sequentially to the stem, reattach extension."""
     stem = file.stem
@@ -154,6 +166,8 @@ def compute_new_name(file: Path, operations: list[dict]) -> str:
             stem = apply_prefix(stem, op["prefix"])
         elif op["type"] == "suffix":
             stem = apply_suffix(stem, op["suffix"])
+        elif op["type"] == "case":
+            stem = apply_case(stem, op["mode"])
 
     return stem + ext
 
@@ -432,6 +446,7 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
             "Find/Replace (regex)",
             "Add Prefix",
             "Add Suffix (before extension)",
+            "Change Case",
             "Pattern Group Detection",
         ]
         op_type = questionary.select(
@@ -464,6 +479,20 @@ def step_operations(state, config, excluded_names):  # pragma: no cover
             if suffix is None:
                 sys.exit(0)
             operations.append({"type": "suffix", "suffix": suffix})
+        elif op_type == "Change Case":
+            case_mode = questionary.select(
+                "Select case mode:",
+                choices=["UPPERCASE", "lowercase", "Title Case", "snake_case"],
+            ).ask()
+            if case_mode is None:
+                sys.exit(0)
+            mode_map = {
+                "UPPERCASE": "uppercase",
+                "lowercase": "lowercase",
+                "Title Case": "title",
+                "snake_case": "snake_case",
+            }
+            operations.append({"type": "case", "mode": mode_map[case_mode]})
         else:
             pattern_op = ask_pattern_operation(filenames)
             if pattern_op is None:
