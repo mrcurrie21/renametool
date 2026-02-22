@@ -14,7 +14,7 @@ PATTERNS = {
     "Resolution tag": r"(?:720p|1080p|2160p|4K)",
     "Source tag": r"(?:BluRay|WEB-DL|HDRip|BRRip|WEBRip|HDTV)",
     "Codec tag": r"(?:x264|x265|HEVC|H\.?264|H\.?265|AVC)",
-    "Release group": r"\[[^\]]*\]|-[A-Za-z0-9]+$",
+    "Release group": r"-[A-Z][A-Za-z0-9]{1,15}$",
 }
 
 TV_REGEX = re.compile(
@@ -71,7 +71,10 @@ def parse_movie_filename(filename: str) -> dict | None:
     Returns a dict with keys: title, year.
     Returns None if the filename doesn't match the movie pattern.
     """
-    stem = Path(filename).stem
+    # Strip known media extensions; avoid Path.stem which mishandles e.g. "Movie.2020"
+    name = Path(filename).name
+    ext_match = re.search(r"\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|ts|srt|sub)$", name, re.I)
+    stem = name[: ext_match.start()] if ext_match else name
     m = MOVIE_REGEX.match(stem)
     if not m:
         return None

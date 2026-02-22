@@ -73,6 +73,11 @@ class TestParseTvFilename:
         assert result["season"] == 5
         assert result["episode"] == 10
 
+    def test_multi_word_episode_title(self):
+        result = parse_tv_filename("Show.S01E01.The.Pilot.Episode.720p.BluRay.mkv")
+        assert result is not None
+        assert result["title"] == "The Pilot Episode"
+
     def test_returns_none_for_non_tv(self):
         assert parse_tv_filename("random_file.txt") is None
 
@@ -126,6 +131,12 @@ class TestParseMovieFilename:
         result = parse_movie_filename("Avatar.2009.mkv")
         assert result is not None
         assert result["year"] == 2009
+
+    def test_stem_only_no_extension(self):
+        result = parse_movie_filename("The.Matrix.1999")
+        assert result is not None
+        assert result["title"] == "The Matrix"
+        assert result["year"] == 1999
 
     def test_returns_none_for_no_year(self):
         assert parse_movie_filename("random_file.txt") is None
