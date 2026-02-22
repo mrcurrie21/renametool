@@ -11,5 +11,8 @@ htmlcov/
 # Editor / tool config
 .claude/
 
+# Local scratchpads (not tracked in git)
+scratchpads/
+
 # User config (never commit personal settings)
 renametool.toml
