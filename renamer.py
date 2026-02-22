@@ -210,10 +210,14 @@ def validate_new_names(pairs: list[tuple[Path, str]]) -> list[dict]:
     for original, new_name in pairs:
         status = "OK"
 
-        new_stem = Path(new_name).stem if new_name else ""
+        # Check for empty stem: split on the last dot to find the part before
+        # the extension. Names like ".txt" or "..." have no meaningful stem.
+        parts = new_name.rsplit(".", 1) if new_name else [""]
+        stem_before_ext = parts[0] if len(parts) == 2 else new_name
+        stem_empty = not new_name or not stem_before_ext.rstrip(".")
         if new_name == original.name:
             status = "NO CHANGE"
-        elif not new_name or not new_stem or not new_stem.rstrip("."):
+        elif stem_empty:
             status = "INVALID (empty name)"
         elif len(new_name) > MAX_NAME_LEN:
             status = "INVALID (name too long)"
